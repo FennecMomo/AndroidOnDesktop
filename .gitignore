@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+.dotnet/
+runtime/
+data/
+artifacts/
+*.user
+*.apk

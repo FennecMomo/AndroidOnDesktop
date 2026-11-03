@@ -1,0 +1,46 @@
+Android 窗口 0.1.2
+
+运行 AndroidOnDesktop.exe。请保留同目录的 DLL、runtimeconfig.json 和 tools 文件夹。
+此版本需要 .NET 10 Windows Desktop Runtime；本次开发电脑已经安装。
+
+第一次使用：
+1. 点击“安装运行组件”，在安装窗口中按 Google 官方提示确认 Android SDK 许可。
+2. 完成后点击“运行配置”，再点击“自动查找”和“保存配置”。
+3. 点击“检测环境”，检查 Android 模拟器、scrcpy 和虚拟化加速。
+4. 点击“启动 Android”，等待后台系统就绪。
+5. 点击“安装 APK”或将一个 APK 拖入程序，选中应用后点击“打开应用窗口”。
+
+安装组件保存在 runtime 文件夹内。默认使用 Android 16 / API 36 x86_64，不依赖手机。
+默认虚拟设备为 AndroidOnDesktop_API36，模拟器端口为 5584。
+打开管理程序时会自动连接配置中已经运行的 Android，并刷新应用列表。
+“启动 Android”会优先连接同名已就绪实例，未运行时才新建进程。
+连接到已有实例时不会接管其停止操作；“停止 Android”只对本程序启动的实例启用。
+后台 Android 最长等待 4 分钟；应用首次进入可见、已绘制状态最长等待 90 秒。
+关闭管理程序会关闭它创建的应用窗口并停止它启动的 Android，保留已经安装的应用数据。
+多个窗口共享同一 Android 系统，首个音频会话播放设备声音。应用列表暂按包名显示。
+默认固定 Android 分辨率，Windows 窗口改变大小时缩放画面。
+默认应用显示尺寸为 720x1280，视频输出上限 30 FPS，H.264 编码、4 Mbps。
+安卓内存默认 3072 MB。通用图形默认值为 auto；本机已验证并使用 NVIDIA 显卡对应的 host 模式。
+“运行配置”可以调整图形加速、安卓内存和帧率上限。
+修改图形或内存后需要重启 Android；分辨率和视频参数会在新打开的应用窗口中生效。
+
+应用异常退出时，管理程序会显示错误提示、保存退出原因并关闭对应的空白窗口。
+点击“打开日志”或错误提示中的“查看日志”，可以读取 data/logs 下的当前会话日志。
+
+旧 Android 15 与 Android 11 环境及其数据目录保留。
+各环境分别保存应用和数据；切换默认环境不会自动迁移旧环境的登录、书架与缓存。
+
+如果检测不到硬件加速，请根据日志检查 BIOS 虚拟化和 Windows Hypervisor Platform。
+程序不会自动更改 Windows 功能或重启电脑。
+
+目前为普通 APK 原型。ARM 专用库、游戏、Google 登录、设备硬件等兼容性需要逐个应用验证。
+Windows 窗口创建通过，不代表应用内部全部业务、输入和声音效果已经验收。
+本机已在 Android 16 中看到番茄小说欢迎页；用户自行确认协议后，后台检测到首页可见且完成绘制。
+登录、阅读、书架、音频及长时稳定性仍未验收。
+本次已核对硬件图形路径与必要启动链路，没有开展全面效果测试；实际滑动和阅读流畅度仍需使用中确认。
+
+官方资料：
+https://developer.android.com/studio/run/emulator-commandline
+https://developer.android.com/studio/run/emulator-acceleration
+https://developer.android.com/studio/terms
+https://github.com/Genymobile/scrcpy

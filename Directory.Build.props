@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version>0.1.2</Version>
+    <Authors>AndroidOnDesktop</Authors>
+  </PropertyGroup>
+</Project>
