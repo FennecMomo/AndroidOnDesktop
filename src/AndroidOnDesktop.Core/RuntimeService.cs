@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 
@@ -13,7 +14,7 @@ public sealed partial class RuntimeService : IAsyncDisposable
     private Process? _audioOwner;
     private Process? _emulator;
     private string? _ownedSerial;
-    private string? _ownedAdbPath;
+    private EmulatorIdentity? _ownedIdentity;
     private bool _disposed;
 
     public RuntimeService(HostSettings settings) => Settings = settings;
@@ -87,9 +88,11 @@ public sealed partial class RuntimeService : IAsyncDisposable
         await _lifecycle.WaitAsync(cancellationToken);
         try
         {
-            if (_ownedSerial is not null) throw new InvalidOperationException("本程序启动的 Android 运行环境已存在，请先停止后再启动。");
+            if (_ownedSerial is not null) throw new InvalidOperationException("本程序管理的 Android 运行环境已存在，请先停止后再启动。");
             Settings.ValidateEmulator();
             var serial = $"emulator-{Settings.EmulatorPort}";
+            var adbPath = Settings.AdbPath;
+            var avdName = Settings.AvdName.Trim();
             var devices = await GetDevicesAsync(cancellationToken);
             if (devices.Any(device => device.Serial == serial))
                 throw new InvalidOperationException($"端口 {Settings.EmulatorPort} 已有模拟器。可在设备列表选择它，或更换端口；本程序不会接管已有模拟器。");
@@ -115,7 +118,6 @@ public sealed partial class RuntimeService : IAsyncDisposable
             _emulator.BeginOutputReadLine();
             _emulator.BeginErrorReadLine();
             _ownedSerial = serial;
-            _ownedAdbPath = Settings.AdbPath;
             Settings.DeviceSerial = serial;
             WriteLog($"正在启动 {Settings.AvdName}（{serial}），首次启动可能需要数分钟。");
             using var bootTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
@@ -131,6 +133,7 @@ public sealed partial class RuntimeService : IAsyncDisposable
                     if (boot.ExitCode == 0 && boot.StandardOutput.Trim() == "1") break;
                     await Task.Delay(1500, linked.Token);
                 }
+                _ownedIdentity = await ReadEmulatorIdentityAsync(adbPath, serial, avdName, linked.Token);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -159,30 +162,71 @@ public sealed partial class RuntimeService : IAsyncDisposable
         if (_ownedSerial is null) return;
         var serial = _ownedSerial;
         await CloseSessionsAsync(serial);
-        if (!string.IsNullOrWhiteSpace(_ownedAdbPath))
+        try
         {
-            try
+            if (_ownedIdentity is { } expected)
             {
-                await ProcessRunner.RunAsync(_ownedAdbPath, ["-s", serial, "emu", "kill"], TimeSpan.FromSeconds(10), requireSuccess: false);
+                // Use the captured connection identity, never mutable UI settings. A reused
+                // ADB serial or a restarted AVD must not receive the old session's stop command.
+                var devices = await ProcessRunner.RunAsync(expected.AdbPath, ["devices"], TimeSpan.FromSeconds(5));
+                var connected = devices.StandardOutput.Split('\n', StringSplitOptions.TrimEntries)
+                    .Any(line => Regex.IsMatch(line, "^" + Regex.Escape(serial) + @"\s+device(?:\s|$)", RegexOptions.CultureInvariant));
+                if (connected)
+                {
+                    var current = await ReadEmulatorIdentityAsync(expected.AdbPath, expected.Serial, expected.AvdName, CancellationToken.None);
+                    if (!SameDirectory(current.AvdPath, expected.AvdPath) || current.BootId != expected.BootId)
+                        throw new InvalidOperationException("Android 实例已被替换或重新启动，未停止其他实例。");
+                    await ProcessRunner.RunAsync(expected.AdbPath, ["-s", expected.Serial, "emu", "kill"], TimeSpan.FromSeconds(10));
+                }
             }
-            catch (Exception ex) { WriteLog("停止运行环境：" + ex.Message); }
+            else if (_emulator is not null)
+            {
+                // Startup was cancelled before Android exposed an identity. Only the exact
+                // process tree launched by this service can be cleaned up in that case.
+                ProcessRunner.TryKill(_emulator);
+            }
+
+            if (_emulator is not null)
+            {
+                try
+                {
+                    using var exitTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await _emulator.WaitForExitAsync(exitTimeout.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    ProcessRunner.TryKill(_emulator);
+                }
+            }
+            if (!await WaitForEmulatorPortClosedAsync(serial, TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("Android 停止请求已发送，但运行环境尚未退出，请查看日志后重试停止。");
         }
-        if (_emulator is not null)
+        catch (Exception ex)
         {
-            try
-            {
-                using var exitTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await _emulator.WaitForExitAsync(exitTimeout.Token);
-            }
-            catch (OperationCanceledException) { }
-            catch (InvalidOperationException) { }
-            ProcessRunner.TryKill(_emulator);
-            _emulator.Dispose();
-            _emulator = null;
+            WriteLog("停止运行环境失败：" + ex.Message);
+            throw;
         }
+        _emulator?.Dispose();
+        _emulator = null;
         _ownedSerial = null;
-        _ownedAdbPath = null;
-        WriteLog("已停止本程序启动的 Android 运行环境：" + serial);
+        _ownedIdentity = null;
+        WriteLog("已停止本程序管理的 Android 运行环境：" + serial);
+    }
+
+    private static async Task<bool> WaitForEmulatorPortClosedAsync(string serial, TimeSpan timeout)
+    {
+        var port = int.Parse(serial.AsSpan("emulator-".Length));
+        using var deadline = new CancellationTokenSource(timeout);
+        while (!deadline.IsCancellationRequested)
+        {
+            // Inspect listeners only: probing an unused port may time out before Windows
+            // reports refusal, while closing connections can remain in TIME_WAIT.
+            if (!IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint => endpoint.Port == port))
+                return true;
+            try { await Task.Delay(200, deadline.Token); }
+            catch (OperationCanceledException) { }
+        }
+        return false;
     }
 
     public async Task<IReadOnlyList<AndroidApp>> ListAppsAsync(CancellationToken cancellationToken = default)
@@ -263,8 +307,17 @@ public sealed partial class RuntimeService : IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        await CloseSessionsAsync();
-        await StopOwnedEmulatorAsync();
-        _lifecycle.Dispose();
+        try
+        {
+            await CloseSessionsAsync();
+            await StopOwnedEmulatorAsync();
+            _lifecycle.Dispose();
+        }
+        catch
+        {
+            // A failed stop keeps ownership so the desktop can report it and retry.
+            _disposed = false;
+            throw;
+        }
     }
 }

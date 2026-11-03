@@ -19,7 +19,7 @@
    <StackPanel>
     <DockPanel LastChildFill="False" x:Name="RuntimeActions">
      <Button Content="启动 Android" Style="{StaticResource PrimaryButton}" Click="Start_Click"/>
-     <Button x:Name="StopAndroidButton" Content="停止 Android" Click="Stop_Click" IsEnabled="False" ToolTip="停止本程序启动的 Android；连接到已有实例时不会停止该实例。"/>
+     <Button x:Name="StopAndroidButton" Content="停止 Android" Click="Stop_Click" IsEnabled="False" ToolTip="停止本程序管理的安卓环境并释放内存；关闭主程序时也会执行。"/>
      <Button Content="检测环境" Click="Detect_Click"/>
      <Button Content="刷新设备" Click="Devices_Click"/>
      <ComboBox x:Name="DevicesBox" Width="270" DisplayMemberPath="Serial" SelectionChanged="Devices_SelectionChanged"/>

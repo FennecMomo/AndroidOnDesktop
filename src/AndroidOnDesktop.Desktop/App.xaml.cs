@@ -42,8 +42,15 @@ public partial class App : Application
                 return;
             }
             if (e.Args.Length == 2 && e.Args[0] == "--verify-startup") StartupReportPath = e.Args[1];
-            MainWindow = new MainWindow(settings);
+            var verifyExit = e.Args.Length == 3 && e.Args[0] == "--verify-exit";
+            MainWindow = new MainWindow(settings, manageExistingLifetime: verifyExit || !IsVerificationMode);
             MainWindow.Show();
+            if (verifyExit)
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                Shutdown(await ExitVerification.RunAsync((MainWindow)MainWindow, settings, e.Args[1], e.Args[2]));
+                return;
+            }
             if (e.Args.Length is 3 or 4 && e.Args[0] == "--verify-error-ui")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;

@@ -18,7 +18,10 @@ public partial class MainWindow : Window
     private readonly List<AndroidApp> _apps = [];
     private readonly Dictionary<string, AppSessionUpdate> _latestSessions = new(StringComparer.Ordinal);
     private CancellationTokenSource? _operation;
+    private TaskCompletionSource? _operationCompleted;
     private bool _closing;
+    private bool _allowClose;
+    private readonly bool _manageExistingLifetime;
     private bool _populating;
     private Process? _setupProcess;
     private string? _errorPackage;
@@ -32,11 +35,12 @@ public partial class MainWindow : Window
     internal string ErrorMessage => ErrorText.Text;
     internal AppSessionUpdate? LastSessionUpdate { get; private set; }
 
-    public MainWindow(HostSettings settings)
+    public MainWindow(HostSettings settings, bool manageExistingLifetime = true)
     {
         _sessionLog = new SessionLog(Path.Combine(App.Root, "data", "logs"));
         InitializeComponent();
         _settings = settings;
+        _manageExistingLifetime = manageExistingLifetime;
         _runtime = new RuntimeService(settings);
         _runtime.Log += AppendLog;
         _runtime.AppSessionChanged += HandleSessionUpdate;
@@ -95,7 +99,7 @@ public partial class MainWindow : Window
             (candidate.EmulatorPort != _settings.EmulatorPort || candidate.AvdName != _settings.AvdName || candidate.EmulatorPath != _settings.EmulatorPath ||
              !string.Equals(candidate.EmulatorGpuMode, _settings.EmulatorGpuMode?.Trim(), StringComparison.OrdinalIgnoreCase) ||
              candidate.EmulatorMemoryMb != _settings.EmulatorMemoryMb))
-            throw new InvalidOperationException("请先停止本程序启动的 Android，再修改模拟器路径、AVD、端口、图形加速或安卓内存。");
+            throw new InvalidOperationException("请先停止本程序管理的 Android，再修改模拟器路径、AVD、端口、图形加速或安卓内存。");
         await SettingsStore.SaveAsync(App.SettingsPath, candidate);
         _settings.AdbPath = candidate.AdbPath;
         _settings.EmulatorPath = candidate.EmulatorPath;
@@ -135,6 +139,8 @@ public partial class MainWindow : Window
         if (_operation is not null || _closing) return;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _operation = cancellation;
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _operationCompleted = completed;
         var failureSequence = _sessionFailureSequence;
         if (launchPackage is not null && _errorPackage == launchPackage) ClearApplicationError();
         SetBusy(true);
@@ -162,7 +168,9 @@ public partial class MainWindow : Window
         finally
         {
             _operation = null;
-            SetBusy(false);
+            _operationCompleted = null;
+            if (!_closing) SetBusy(false);
+            completed.TrySetResult();
         }
     }
 
@@ -279,14 +287,16 @@ public partial class MainWindow : Window
         EmptyText.Text = _apps.Count == 0 ? "安装 APK 后，应用会显示在这里。\n也可以将 APK 拖入此窗口。" : "没有匹配的应用。";
     }
 
-    private async void Start_Click(object sender, RoutedEventArgs e) => await RunAsync("启动 Android", async ct =>
+    private async void Start_Click(object sender, RoutedEventArgs e) => await RunAsync("启动 Android", StartAndroidAsync);
+
+    private async Task StartAndroidAsync(CancellationToken ct)
     {
-        if (!await _runtime.ConnectRunningEmulatorAsync(ct)) await _runtime.StartEmulatorAsync(ct);
+        if (!await _runtime.ConnectRunningEmulatorAsync(ct, manageLifetime: _manageExistingLifetime)) await _runtime.StartEmulatorAsync(ct);
         PopulateSettings();
         await SettingsStore.SaveAsync(App.SettingsPath, _settings);
         await RefreshDevicesAsync(ct);
         await RefreshAppsAsync(ct);
-    });
+    }
 
     private async void Stop_Click(object sender, RoutedEventArgs e) => await RunAsync("停止 Android", async ct =>
     {
@@ -414,7 +424,7 @@ public partial class MainWindow : Window
         {
             var configuredSerial = $"emulator-{_settings.EmulatorPort}";
             if (string.IsNullOrWhiteSpace(_settings.DeviceSerial) || _settings.DeviceSerial == configuredSerial)
-                found = await _runtime.ConnectRunningEmulatorAsync(ct);
+                found = await _runtime.ConnectRunningEmulatorAsync(ct, manageLifetime: _manageExistingLifetime);
             else
                 found = (await _runtime.GetDevicesAsync(ct)).Any(device => device.Serial == _settings.DeviceSerial && device.State == "device");
             await RefreshDevicesAsync(ct);
@@ -433,16 +443,32 @@ public partial class MainWindow : Window
 
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (_closing) return;
+        if (_allowClose) return;
         e.Cancel = true;
-        _operation?.Cancel();
-        if (_operation is not null) { OperationText.Text = "正在取消操作，请稍后再关闭窗口。"; return; }
+        if (_closing) return;
         _closing = true;
         IsEnabled = false;
-        try { await _runtime.DisposeAsync(); }
-        catch (Exception ex) { AppendLog(ex.ToString()); }
+        var pendingOperation = _operationCompleted?.Task;
+        OperationText.Text = "正在关闭应用和 Android，请稍候。";
+        _operation?.Cancel();
+        try
+        {
+            if (pendingOperation is not null) await pendingOperation;
+            await _runtime.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog(ex.ToString());
+            _closing = false;
+            IsEnabled = true;
+            SetBusy(false);
+            OperationText.Text = "Android 尚未成功停止，请重试“停止 Android”或关闭窗口。";
+            ShowApplicationError("Android", OperationText.Text + " " + ex.Message);
+            return;
+        }
         _runtime.AppSessionChanged -= HandleSessionUpdate;
         _runtime.Log -= AppendLog;
+        _allowClose = true;
         // Closing may finish synchronously; re-enter Close only after this event returns.
         _ = Dispatcher.BeginInvoke(Close);
     }
