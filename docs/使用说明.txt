@@ -1,4 +1,4 @@
-Android 窗口 0.1.3
+Android 窗口 0.1.4
 
 运行 AndroidOnDesktop.exe。请保留同目录的 DLL、runtimeconfig.json 和 tools 文件夹。
 此版本需要 .NET 10 Windows Desktop Runtime；本次开发电脑已经安装。

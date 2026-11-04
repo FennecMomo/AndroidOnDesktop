@@ -6,8 +6,12 @@
     <AssemblyName>AndroidOnDesktop</AssemblyName>
     <RootNamespace>AndroidOnDesktop.Desktop</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AndroidOnDesktop.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\AndroidOnDesktop.ico" />
+    <Content Include="Assets\AndroidOnDesktop.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AndroidOnDesktop.svg" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../AndroidOnDesktop.Core/AndroidOnDesktop.Core.csproj" />
     <Content Include="../../tools/Install-Runtime.ps1" Link="tools/Install-Runtime.ps1" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../docs/使用说明.txt" Link="使用说明.txt" CopyToOutputDirectory="PreserveNewest" />

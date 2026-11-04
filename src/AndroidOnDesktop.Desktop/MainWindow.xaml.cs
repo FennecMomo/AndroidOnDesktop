@@ -403,7 +403,7 @@ public partial class MainWindow : Window
         {
             await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new
             {
-                success = true, title = Title, loaded = IsLoaded, width = ActualWidth, height = ActualHeight,
+                success = true, title = Title, loaded = IsLoaded, windowIconLoaded = Icon is not null, width = ActualWidth, height = ActualHeight,
                 avdName = _settings.AvdName, emulatorPort = _settings.EmulatorPort,
                 deviceSerial = _settings.DeviceSerial, appStartupTimeoutSeconds = _settings.AppStartupTimeoutSeconds,
                 displaySize = _settings.DisplaySize, videoMaxFps = _settings.VideoMaxFps,

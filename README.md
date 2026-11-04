@@ -2,7 +2,13 @@
 
 让普通 APK 在本机 Android 环境中执行，并通过独立的 Windows 窗口使用。第一版使用 .NET 10 / WPF 开发 Windows 管理程序，组合 Google Android Emulator、ADB 与 scrcpy；不依赖连接手机。
 
-当前版本为 0.1.3 原型。Android 兼容能力来自 Android 系统镜像，并非把 APK 转换成 Windows EXE，也不是自行重写 Android 内核。
+当前版本为 0.1.4 原型。Android 兼容能力来自 Android 系统镜像，并非把 APK 转换成 Windows EXE，也不是自行重写 Android 内核。
+
+## 0.1.4 图标与本机部署
+
+程序、窗口和桌面快捷方式使用绿色安卓头像与桌面窗口组合图标，提供 16–256 像素 ICO、PNG 和可编辑 SVG。`tools/Build-Icon.ps1` 可重新生成资源。
+
+独立部署时将发布文件直接放在安装目录根部，同级放置 `runtime` 与 `data`，无需保留工程源码或解决方案文件。迁移需要同步修改 `data/settings.json` 中的工具路径、AVD 索引和配置中的旧路径。系统安装的 .NET / 虚拟化组件仍使用本机现有环境，不属于目录内便携组件。本机计划部署到 `D:\Tools\AndroidOnDesktop`；部署验证记录随该目录保存。
 
 ## 0.1.3 退出行为修复
 
